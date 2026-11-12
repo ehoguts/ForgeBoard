@@ -1,0 +1,44 @@
+{
+  "scanner": "Trivy 0.76.2",
+  "policy": "block all HIGH and CRITICAL, including unfixed",
+  "reports": [
+    {
+      "image": "backend",
+      "createdAt": "2026-11-12T23:30:04.047202439Z",
+      "imageId": "sha256:858f2c2c9484540a9393159f90e6b269c4afda761656c531e320d01c20dce3b8",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.4"
+      },
+      "severityCounts": {
+        "MEDIUM": 5,
+        "LOW": 1
+      },
+      "reportSha256": "5696cd4724a07a030721807e24ba80b0dece45154e61c4840278c82e66033f66"
+    },
+    {
+      "image": "frontend",
+      "createdAt": "2026-11-12T23:28:39.008276397Z",
+      "imageId": "sha256:9da56cfa9d85aca83a1b46d4133625cb2f48d7bf843674643ca0166cd779cd78",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.3"
+      },
+      "severityCounts": {
+        "MEDIUM": 3
+      },
+      "reportSha256": "8a4d8ecae8d515af505fdaeac4bd00d00a40887c072a3786bf60bb7b148a7c38"
+    },
+    {
+      "image": "database",
+      "createdAt": "2026-11-12T23:34:17.326730475Z",
+      "imageId": "sha256:d0ec7f21b2672597e759b019310d03a420b5b9bc203abb6344e77fc96f877eb3",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.4"
+      },
+      "severityCounts": {},
+      "reportSha256": "0ecdbd0371ad4db0f35f7a13bfe16720930fa2cf75322dfaced0e9113acf819f"
+    }
+  ]
+}

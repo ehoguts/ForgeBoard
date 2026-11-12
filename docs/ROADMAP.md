@@ -1,11 +1,11 @@
 # ForgeBoard roadmap
 
-## Phase 1 — working product (CURRENT)
+## Phase 1 — working product (COMPLETE)
 - Repository scaffold, API, Postgres migrations, secure session auth, user-scoped projects/issues CRUD.
 - React UI, dashboard, filtering, basic tests, Docker Compose, README.
 - Completion gate: working end-to-end local demo + tests and documented setup.
 
-## Phase 2 — software delivery and DevSecOps
+## Phase 2 — software delivery and DevSecOps (CURRENT)
 - GitHub Actions: backend/frontend tests, lint, type checks, container builds.
 - Security scanning: CodeQL, dependency analysis, and Trivy image scanning.
 - Document threat model and fix high-impact findings before continuing.
