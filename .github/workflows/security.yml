@@ -1,0 +1,188 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "43 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      exercise_gate_failure:
+        description: Demonstrate a blocked synthetic high-severity finding without changing application code
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate-tests:
+    name: Security report gate tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Test report validation and severity boundaries
+        run: python -m unittest discover -s scripts/tests -v
+      - name: Demonstrate an intentional, harmless gate failure
+        if: github.event_name == 'workflow_dispatch' && inputs.exercise_gate_failure
+        run: |
+          mkdir -p .local/security
+          python scripts/security_gate.py demo --report .local/security/demo.json
+      - name: Retain the demonstration report on the trusted default branch
+        if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-gate-demonstration
+          path: .local/security/demo.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  dependencies:
+    name: Audit Python and JavaScript dependencies
+    needs: gate-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.0"
+          package-manager-cache: false
+      - name: Install pinned audit tooling
+        run: python -m pip install -r infra/security-requirements.txt
+      - name: Install locked JavaScript dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Audit the resolved Python application and development dependency graph
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p .local/security
+          set +e
+          python -m pip_audit -r backend/requirements-dev.txt --format json --output .local/security/pip-audit.json 2> .local/security/pip-audit.stderr
+          scan_status=$?
+          set -e
+          cat .local/security/pip-audit.stderr
+          if [ "$scan_status" -gt 1 ]; then
+            echo "::error::pip-audit could not complete; refusing to treat an unavailable scan as clean."
+            exit "$scan_status"
+          fi
+          python scripts/security_gate.py pip-audit .local/security/pip-audit.json
+          if [ "$scan_status" -ne 0 ]; then
+            echo "::error::pip-audit returned a failure; refusing an inconsistent report."
+            exit "$scan_status"
+          fi
+      - name: Audit the complete JavaScript dependency graph
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: |
+          mkdir -p ../.local/security
+          set +e
+          npm audit --json --audit-level=high > ../.local/security/npm-audit.json 2> ../.local/security/npm-audit.stderr
+          scan_status=$?
+          set -e
+          cat ../.local/security/npm-audit.stderr
+          if [ "$scan_status" -gt 1 ]; then
+            echo "::error::npm audit could not complete; refusing to treat an unavailable scan as clean."
+            exit "$scan_status"
+          fi
+          python ../scripts/security_gate.py npm ../.local/security/npm-audit.json
+          if [ "$scan_status" -ne 0 ]; then
+            echo "::error::npm audit returned a failure; refusing an inconsistent report."
+            exit "$scan_status"
+          fi
+      - name: Retain dependency reports on the trusted default branch
+        if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-security-reports
+          path: |
+            .local/security/*.json
+            .local/security/*.stderr
+          if-no-files-found: warn
+          retention-days: 7
+
+  images:
+    name: Scan ${{ matrix.service }} image with Trivy
+    needs: gate-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend, database]
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+      POSTGRES_IMAGE: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+      SCAN_TARGET: ${{ matrix.service }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python for report validation
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Build or pull the image and export a local tar
+        run: |
+          case "$SCAN_TARGET" in
+            backend|frontend)
+              docker build --pull --tag "forgeboard-${SCAN_TARGET}:security" "$SCAN_TARGET"
+              ;;
+            database)
+              docker pull "$POSTGRES_IMAGE"
+              docker tag "$POSTGRES_IMAGE" "forgeboard-database:security"
+              ;;
+            *)
+              echo "::error::Unexpected image target."
+              exit 2
+              ;;
+          esac
+          mkdir -p ".local/security-input/${SCAN_TARGET}" .local/security
+          docker image save --output ".local/security-input/${SCAN_TARGET}/image.tar" "forgeboard-${SCAN_TARGET}:security"
+      - name: Scan without a Docker socket or application execution
+        run: |
+          docker run --rm --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --mount "type=bind,source=${PWD}/.local/security-input/${SCAN_TARGET},target=/input,readonly" \
+            --mount "type=bind,source=${PWD}/.local/security,target=/reports" \
+            "$TRIVY_IMAGE" image \
+            --cache-dir /tmp/trivy-cache \
+            --scanners vuln --format json \
+            --output "/reports/trivy-${SCAN_TARGET}.json" \
+            --input /input/image.tar --exit-code 0 \
+            2> ".local/security/trivy-${SCAN_TARGET}.stderr"
+      - name: Block high and critical vulnerabilities, including unfixed findings
+        run: python scripts/security_gate.py trivy ".local/security/trivy-${SCAN_TARGET}.json"
+      - name: Retain image reports on the trusted default branch
+        if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-${{ matrix.service }}
+          path: |
+            .local/security/*.json
+            .local/security/*.stderr
+          if-no-files-found: warn
+          retention-days: 7
