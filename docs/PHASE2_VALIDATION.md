@@ -8,6 +8,8 @@ Commit [924d96f](https://github.com/ehoguts/ForgeBoard/commit/924d96f0fa2175a18b
 
 The corrected test expects exit 1 for this blocked report and exit 2 for a missing report. All 11 report-gate tests passed locally after that correction. The remediation also fixes the actual blocking image findings described in [SECURITY_FINDINGS.md](SECURITY_FINDINGS.md). Their initial failures were not silenced by changing thresholds.
 
+Hosted execution also exposed a scanner portability issue: owner-only image archives could not be read by a container running with all capabilities dropped under a different UID. The workflow now uses the runner's UID/GID and a temporary HOME, retaining the read-only archive/root filesystem, no Docker socket, and dropped capabilities. Scanner stderr is printed even on failure, so diagnostics remain available for PR runs without publishing artifacts.
+
 The earlier hosted [CI run](https://github.com/ehoguts/ForgeBoard/actions/runs/43328672068) passed backend/frontend quality and both container builds, and the [CodeQL run](https://github.com/ehoguts/ForgeBoard/actions/runs/43328672052) passed Python/JavaScript analysis and the explicit SARIF gates. Those links identify the demonstrated revision; final review must also inspect the current PR check suite after the corrected image definitions.
 
 ## Local executions after image remediation
@@ -57,6 +59,8 @@ The explicit PostgreSQL URL assumes the disposable example credentials and a pre
 [security-scan-summary.json](security-scan-summary.json) records the scanned image IDs, OS metadata, severity counts, and SHA-256 digests of the raw local reports. The raw reports and image archives remain in the ignored local tooling directory; future default-branch workflow runs retain reports as short-lived artifacts.
 
 ## Boundaries and limitations
+
+The GitHub API readback confirmed that `main` requires PRs and all 12 quality/build/security checks from the GitHub Actions application (ID 15368), with strict up-to-date checks and administrator enforcement. Force pushes and branch deletion are disabled; linear history and conversation resolution are required. Approving review count is zero to support a single-maintainer portfolio; required checks still apply to the maintainer. Private vulnerability reporting is enabled. These are actual repository settings, not merely suggested workflow configuration. The PR remains the review/merge boundary; no automatic merge was configured.
 
 - Scanner databases change. These results describe the scanned image/dependency versions at execution time, not a permanent security clearance. No ignored CVEs or exceptions were added.
 - Remaining moderate/low findings, ownership, and a review date are listed in SECURITY_FINDINGS.md. They do not meet the configured blocking thresholds.
