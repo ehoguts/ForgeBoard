@@ -161,6 +161,7 @@ jobs:
           docker image save --output ".local/security-input/${SCAN_TARGET}/image.tar" "forgeboard-${SCAN_TARGET}:security"
       - name: Scan without a Docker socket or application execution
         run: |
+          set +e
           docker run --rm --read-only \
             --tmpfs /tmp:rw,noexec,nosuid,nodev \
             --cap-drop ALL --security-opt no-new-privileges \
@@ -172,6 +173,10 @@ jobs:
             --output "/reports/trivy-${SCAN_TARGET}.json" \
             --input /input/image.tar --exit-code 0 \
             2> ".local/security/trivy-${SCAN_TARGET}.stderr"
+          scan_status=$?
+          set -e
+          cat ".local/security/trivy-${SCAN_TARGET}.stderr"
+          exit "$scan_status"
       - name: Block high and critical vulnerabilities, including unfixed findings
         run: python scripts/security_gate.py trivy ".local/security/trivy-${SCAN_TARGET}.json"
       - name: Retain image reports on the trusted default branch
