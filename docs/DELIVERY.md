@@ -28,7 +28,7 @@ Third-party actions use verified full commit SHAs. Base application images, Post
 
 The jobs have `contents: read`; only CodeQL receives `security-events: write` for analysis upload. Checkout never retains Git credentials. There is no `pull_request_target`, deployment secret, package-write token, cloud credential, or publication step. Fork PRs retain GitHub's restricted token behavior. Reports are uploaded only from the trusted default branch, with a seven-day retention; PR results remain available in job logs. The upload paths exclude database files, `.env`, image tar archives, and dependency trees.
 
-Trivy receives an image archive mounted read-only and a separate writable report directory. It receives no Docker socket. The scanner's root filesystem is read-only, capabilities are dropped, and temporary/cache writes use a private tmpfs. Scanning does not start the application image.
+Trivy receives an image archive mounted read-only and a separate writable report directory. It receives no Docker socket. In CI it runs as the runner's UID/GID so it can read owner-only Docker archives without relying on root capabilities. The scanner's root filesystem is read-only, capabilities are dropped, HOME and temporary/cache writes use a private tmpfs. Scanning does not start the application image.
 
 ## Local reproduction
 

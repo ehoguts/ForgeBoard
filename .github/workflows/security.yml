@@ -163,6 +163,7 @@ jobs:
         run: |
           set +e
           docker run --rm --read-only \
+            --user "$(id -u):$(id -g)" --env HOME=/tmp \
             --tmpfs /tmp:rw,noexec,nosuid,nodev \
             --cap-drop ALL --security-opt no-new-privileges \
             --mount "type=bind,source=${PWD}/.local/security-input/${SCAN_TARGET},target=/input,readonly" \
