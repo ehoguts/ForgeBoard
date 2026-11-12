@@ -144,7 +144,7 @@ class SecurityGateTests(unittest.TestCase):
                 check=False,
                 text=True,
             )
-            self.assertEqual(result.returncode, 0)  # Intentional red CI exercise; corrected next.
+            self.assertEqual(result.returncode, 1)
             self.assertIn("DEMO-HIGH-NOT-A-REAL-CVE", result.stdout)
             result = subprocess.run(
                 [

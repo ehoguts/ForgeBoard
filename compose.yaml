@@ -2,7 +2,9 @@ name: forgeboard
 
 services:
   database:
-    image: postgres:16-alpine
+    image: forgeboard-database:local
+    build:
+      context: ./infra/postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-forgeboard}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env before starting}

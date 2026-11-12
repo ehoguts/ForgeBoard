@@ -21,21 +21,6 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    services:
-      postgres:
-        # PostgreSQL 16.15; immutable digest verified from the official image.
-        image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
-        env:
-          POSTGRES_USER: forgeboard
-          POSTGRES_PASSWORD: forgeboard_ci_only
-          POSTGRES_DB: forgeboard_test
-        ports:
-          - 127.0.0.1:5432:5432
-        options: >-
-          --health-cmd "pg_isready -U forgeboard -d forgeboard_test"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 20
     env:
       DATABASE_URL: postgresql+psycopg://forgeboard:forgeboard_ci_only@127.0.0.1:5432/forgeboard_test
       COOKIE_SECURE: "false"
@@ -55,10 +40,32 @@ jobs:
             backend/constraints.txt
       - name: Install test and quality tools
         run: python -m pip install -r requirements-dev.txt
+      - name: Start the same patched PostgreSQL image used by Compose
+        run: |
+          docker build --tag forgeboard-database:ci ../infra/postgres
+          docker run --detach --name forgeboard-ci-db \
+            --publish 127.0.0.1:5432:5432 \
+            --env POSTGRES_USER=forgeboard --env POSTGRES_PASSWORD=forgeboard_ci_only \
+            --env POSTGRES_DB=forgeboard_test \
+            --health-cmd 'pg_isready -U forgeboard -d forgeboard_test' \
+            --health-interval 2s --health-timeout 3s --health-retries 30 \
+            forgeboard-database:ci
+          for attempt in $(seq 1 30); do
+            if [ "$(docker inspect --format '{{.State.Health.Status}}' forgeboard-ci-db)" = healthy ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs forgeboard-ci-db
+          exit 1
       - name: Lint
         run: python -m ruff check .
       - name: Check formatting
         run: python -m ruff format --check .
+      - name: Check security report tooling style
+        run: |
+          python -m ruff check --config pyproject.toml ../scripts/security_gate.py ../scripts/tests
+          python -m ruff format --check --config pyproject.toml ../scripts/security_gate.py ../scripts/tests
       - name: Check types
         run: python -m mypy app
       - name: Test with isolated SQLite
@@ -87,7 +94,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "24.22.0"
+          node-version: "24.22.1"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install locked dependencies

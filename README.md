@@ -1,5 +1,10 @@
 # ForgeBoard
 
+[![CI](https://github.com/ehoguts/ForgeBoard/actions/workflows/ci.yml/badge.svg)](https://github.com/ehoguts/ForgeBoard/actions/workflows/ci.yml)
+[![Security](https://github.com/ehoguts/ForgeBoard/actions/workflows/security.yml/badge.svg)](https://github.com/ehoguts/ForgeBoard/actions/workflows/security.yml)
+
+Phase 2 adds automated quality/build checks, CodeQL, dependency audits, and container vulnerability gates. Read the [delivery guide](docs/DELIVERY.md), [threat model](docs/THREAT_MODEL.md), [security policy](SECURITY.md), and [Phase 2 validation evidence](docs/PHASE2_VALIDATION.md). The application remains local; these workflows do not deploy or publish images.
+
 ForgeBoard is a small issue tracker for personal software projects. Phase 1 includes account registration, login/logout, project and issue CRUD, issue search and filters, pagination, and an account-scoped dashboard.
 
 The stack is FastAPI, Pydantic 2, SQLAlchemy 2, Alembic, PostgreSQL 16, React, TypeScript, Vite, React Router, and TanStack Query. It runs locally without cloud accounts or paid services. Read [the product specification](docs/PROJECT_SPEC.md), [architecture decisions](docs/ARCHITECTURE.md), and [roadmap](docs/ROADMAP.md).
@@ -198,4 +203,6 @@ compose.yaml          PostgreSQL + API + frontend, local only
 .env.example          Disposable local configuration
 ```
 
-Phase 2 adds GitHub Actions checks/container builds, CodeQL/dependency/Trivy scanning, and a documented threat model. Those tools, cloud provisioning, paid services, Kubernetes, and observability stacks are deliberately outside this execution. The local MVP is not a production deployment.
+Phase 2 includes GitHub Actions checks/container builds, CodeQL, dependency/Trivy scanning, and a documented threat model. Application image bases and actions are pinned; Python transitive versions are constrained in `backend/constraints.txt`. The PostgreSQL image is built from `infra/postgres/` to patch system packages and replace the old Go-based privilege-drop helper with Alpine's `su-exec`.
+
+Phase 3 is cloud and Infrastructure as Code design. Provisioning paid resources or deploying publicly requires separate explicit authorization. Kubernetes and an observability stack are not part of Phase 2. The local MVP is not a production deployment.
