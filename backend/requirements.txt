@@ -1,0 +1,8 @@
+-c constraints.txt
+fastapi==0.162.5
+uvicorn==0.54.0
+SQLAlchemy==2.1.8
+alembic==1.20.1
+psycopg[binary]==3.3.9
+argon2-cffi==25.1.0
+pydantic[email]==2.14.3
