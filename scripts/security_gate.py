@@ -83,6 +83,104 @@ def check_pip_audit(data: dict[str, Any]) -> list[str]:
     return blocked
 
 
+def sarif_array_item(items: list[dict[str, Any]], index: Any, label: str) -> dict[str, Any]:
+    if type(index) is not int or not 0 <= index < len(items):
+        raise InvalidReport(f"Invalid SARIF {label} index")
+    return items[index]
+
+
+def sarif_component(tool: dict[str, Any], reference: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(tool, dict):
+        raise InvalidReport("Invalid SARIF tool")
+    driver = tool.get("driver")
+    extensions = tool.get("extensions", [])
+    if (
+        not isinstance(driver, dict)
+        or not isinstance(extensions, list)
+        or any(not isinstance(extension, dict) for extension in extensions)
+    ):
+        raise InvalidReport("Invalid SARIF tool components")
+    component_reference = reference.get("toolComponent", {})
+    if not isinstance(component_reference, dict):
+        raise InvalidReport("Invalid SARIF tool component reference")
+
+    # SARIF 2.1.0 section 3.54.2: an explicit index selects extensions, not driver.
+    if "index" in component_reference:
+        component = sarif_array_item(extensions, component_reference["index"], "tool component")
+    elif "guid" in component_reference:
+        matches = [
+            item
+            for item in [driver, *extensions]
+            if item.get("guid") == component_reference["guid"]
+        ]
+        if len(matches) != 1:
+            raise InvalidReport("SARIF references an unknown or ambiguous tool component")
+        component = matches[0]
+    else:
+        component = driver
+    for field in ("name", "guid"):
+        if field in component_reference and (
+            not isinstance(component_reference[field], str)
+            or not component_reference[field]
+            or component_reference[field] != component.get(field)
+        ):
+            raise InvalidReport("SARIF tool component reference disagrees with its metadata")
+    return component
+
+
+def sarif_rule(tool: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(tool, dict) or not isinstance(result, dict):
+        raise InvalidReport("Invalid SARIF tool or result")
+    reference = result.get("rule", {})
+    if not isinstance(reference, dict):
+        raise InvalidReport("Invalid SARIF rule reference")
+    component = sarif_component(tool, reference)
+    rules = component.get("rules", [])
+    if not isinstance(rules, list) or any(
+        not isinstance(rule, dict) or not isinstance(rule.get("id"), str) or not rule["id"]
+        for rule in rules
+    ):
+        raise InvalidReport("Invalid SARIF rule metadata")
+
+    # Nested references inherit legacy result fields; supplied aliases must agree.
+    for nested, legacy in (("id", "ruleId"), ("index", "ruleIndex")):
+        if nested in reference and legacy in result and reference[nested] != result[legacy]:
+            raise InvalidReport("SARIF rule reference disagrees with its result")
+    rule_id = reference.get("id", result.get("ruleId"))
+    if ("id" in reference or "ruleId" in result) and (not isinstance(rule_id, str) or not rule_id):
+        raise InvalidReport("Invalid SARIF rule identifier")
+    for item, field in ((reference, "index"), (result, "ruleIndex")):
+        if field in item:
+            sarif_array_item(rules, item[field], "rule")
+
+    index = reference.get("index", result.get("ruleIndex"))
+    if index is not None:
+        rule = sarif_array_item(rules, index, "rule")
+    else:
+        # Preserve ID-only reports, but never search a different component or pick
+        # an arbitrary descriptor when its ID is ambiguous.
+        field = "guid" if "guid" in reference else "id"
+        value = reference.get("guid") if field == "guid" else rule_id
+        matches = [rule for rule in rules if rule.get(field) == value]
+        if len(matches) != 1:
+            raise InvalidReport("SARIF result references an unknown or ambiguous rule")
+        rule = matches[0]
+    if "guid" in reference and (
+        not isinstance(reference["guid"], str)
+        or not reference["guid"]
+        or reference["guid"] != rule.get("guid")
+    ):
+        raise InvalidReport("SARIF rule GUID disagrees with its metadata")
+    # Section 3.52.4 permits one additional hierarchical component after rule.id.
+    if (
+        rule_id is not None
+        and rule_id != rule["id"]
+        and (rule_id.rsplit("/", 1)[0] != rule["id"] or not rule_id.rsplit("/", 1)[-1])
+    ):
+        raise InvalidReport("SARIF rule identifier disagrees with its metadata")
+    return rule
+
+
 def check_sarif(data: dict[str, Any]) -> list[str]:
     if data.get("version") != "2.1.0" or not isinstance(data.get("runs"), list) or not data["runs"]:
         raise InvalidReport("Expected SARIF 2.1.0 with at least one analysis run")
@@ -93,20 +191,12 @@ def check_sarif(data: dict[str, Any]) -> list[str]:
             for invocation in run.get("invocations", [])
         ):
             raise InvalidReport("SARIF reports an unsuccessful scanner invocation")
-        rules = run["tool"]["driver"].get("rules", [])
-        by_id = {rule["id"]: rule for rule in rules}
         if not isinstance(run.get("results"), list):
             raise InvalidReport("SARIF run has no results list")
+        tool = run.get("tool")
+        sarif_component(tool, {})
         for result in run["results"]:
-            rule_id = result.get("ruleId")
-            rule = by_id.get(rule_id)
-            if rule is None and type(result.get("ruleIndex")) is int:
-                index = result["ruleIndex"]
-                if not 0 <= index < len(rules):
-                    raise InvalidReport("Invalid SARIF rule index")
-                rule = rules[index]
-            if rule is None:
-                raise InvalidReport("SARIF result references an unknown rule")
+            rule = sarif_rule(tool, result)
             severity = rule.get("properties", {}).get("security-severity")
             if severity is None:
                 # Security queries must retain severity metadata. Quality errors also fail.

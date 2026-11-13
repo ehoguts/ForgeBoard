@@ -3,6 +3,7 @@
 import argparse
 import http.cookiejar
 import json
+import os
 import secrets
 import ssl
 import subprocess
@@ -19,13 +20,26 @@ CERT_TOOL_IMAGE = (
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 
-def command(arguments: list[str], *, required: bool = True) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(arguments, capture_output=True, text=True, check=False)
+def command(
+    arguments: list[str],
+    *,
+    required: bool = True,
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        arguments,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=None if environment is None else {**os.environ, **environment},
+    )
     if required and result.returncode:
-        # Never echo argv: environment assignments can include the disposable DB password.
-        raise RuntimeError(
-            f"Local test command failed ({result.returncode}): {result.stderr[-4000:]}"
-        )
+        # Keep ephemeral credentials out of logs, including partial values at the truncation edge.
+        diagnostic = result.stderr
+        for value in (environment or {}).values():
+            if value:
+                diagnostic = diagnostic.replace(value, "[redacted]")
+        raise RuntimeError(f"Local test command failed ({result.returncode}): {diagnostic[-4000:]}")
     return result
 
 
@@ -63,6 +77,7 @@ def main() -> None:
         f"postgresql+psycopg://forgeboard_test:{password}@database:5432/forgeboard_runtime_test"
         "?sslmode=verify-full&sslrootcert=/run/certs/rds-global-bundle.pem"
     )
+    environment = {"POSTGRES_PASSWORD": password, "SMOKE_DATABASE_URL": database_url}
     try:
         command([*docker, "network", "create", project])
         command(
@@ -98,7 +113,7 @@ def main() -> None:
                 "--env",
                 "POSTGRES_USER=forgeboard_test",
                 "--env",
-                "POSTGRES_PASSWORD=" + password,
+                "POSTGRES_PASSWORD",
                 "--env",
                 "POSTGRES_DB=forgeboard_runtime_test",
                 "--mount",
@@ -111,9 +126,11 @@ def main() -> None:
                 "cp /test-certs/server.key /tls/server.key && chown -R postgres:postgres /tls && "
                 "chmod 600 /tls/server.key && exec docker-entrypoint.sh postgres -c ssl=on "
                 "-c ssl_cert_file=/tls/server.crt -c ssl_key_file=/tls/server.key",
-            ]
+            ],
+            environment=environment,
         )
-        (work / "backend.env").write_text("DATABASE_URL=" + database_url + "\n", encoding="utf-8")
+        # Retain the real Compose env_file contract without storing the fixture credential.
+        (work / "backend.env").touch(mode=0o600)
         (work / "release.env").write_text(
             "\n".join(
                 [
@@ -133,9 +150,11 @@ def main() -> None:
   backend:
     environment:
       APP_ORIGIN: {origin}
+      DATABASE_URL: ${{SMOKE_DATABASE_URL:?Set the ephemeral smoke database URL}}
   migrate:
     environment:
       APP_ORIGIN: {origin}
+      DATABASE_URL: ${{SMOKE_DATABASE_URL:?Set the ephemeral smoke database URL}}
   frontend:
     environment:
       APP_ORIGIN: {origin}
@@ -150,7 +169,7 @@ networks:
 """,
             encoding="utf-8",
         )
-        command([*compose, "config", "--quiet"])
+        command([*compose, "config", "--quiet"], environment=environment)
         for _ in range(30):
             ready = command(
                 [*docker, "exec", project + "-database", "pg_isready", "-U", "forgeboard_test"],
@@ -168,17 +187,19 @@ networks:
                 "ops",
                 "run",
                 "--rm",
-                "--env",
-                "DATABASE_URL=" + database_url.replace("@database:", "@wrong-database:"),
                 "migrate",
             ],
             required=False,
+            environment={
+                **environment,
+                "SMOKE_DATABASE_URL": database_url.replace("@database:", "@wrong-database:"),
+            },
         )
         assert wrong_host.returncode != 0 and "does not match host name" in wrong_host.stderr, (
             "PostgreSQL TLS did not reject a hostname missing from the trusted certificate"
         )
-        command([*compose, "--profile", "ops", "run", "--rm", "migrate"])
-        command([*compose, "up", "-d", "backend", "frontend"])
+        command([*compose, "--profile", "ops", "run", "--rm", "migrate"], environment=environment)
+        command([*compose, "up", "-d", "backend", "frontend"], environment=environment)
         for _ in range(45):
             health = command(
                 [
@@ -201,7 +222,8 @@ networks:
                 "cp",
                 "frontend:/data/caddy/pki/authorities/local/root.crt",
                 str(work / "browser-ca.crt"),
-            ]
+            ],
+            environment=environment,
         )
         context = ssl.create_default_context(cafile=str(work / "browser-ca.crt"))
 
@@ -290,7 +312,9 @@ networks:
         )
     finally:
         command(
-            [*compose, "--profile", "ops", "down", "--volumes", "--remove-orphans"], required=False
+            [*compose, "--profile", "ops", "down", "--volumes", "--remove-orphans"],
+            required=False,
+            environment=environment,
         )
         command([*docker, "stop", project + "-database"], required=False)
         command([*docker, "network", "rm", project], required=False)

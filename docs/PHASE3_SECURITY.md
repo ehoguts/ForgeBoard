@@ -60,6 +60,15 @@ verification, install a CA in the host trust store, contact AWS, or request publ
 certificates. Its containers, volumes, network, credentials, and temporary keys
 are removed after completion. The existing development stack is left running.
 
+The smoke script supplies the disposable database password and URL through child
+process environment variables. Generated fixtures contain interpolation references
+and an empty `backend.env`; neither the credentials nor the URL appear in these
+files or command arguments. Failed commands redact the supplied sensitive values
+before truncating diagnostic output. The real production Compose `env_file`
+contract is unchanged. Docker daemon operators remain trusted: container
+environment metadata is visible to users authorized to administer Docker while
+the disposable containers exist.
+
 The security workflow also builds this production image and scans the resulting
 filesystem with the pinned Trivy version. `scripts/security_gate.py` rejects high
 and critical findings, including findings without a published fix. The build and

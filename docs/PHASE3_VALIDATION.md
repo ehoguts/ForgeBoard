@@ -13,7 +13,8 @@ Validated on November 13, 2026, under the user's **R$0** scope. AWS is a referen
 | `alembic check` | No new upgrade operations detected |
 | Frontend ESLint / Prettier / TypeScript / build | Passed in the development container |
 | Vitest | 14 tests passed across 5 files |
-| Security-report gate regressions | 11 tests passed; missing/malformed reports and blocking findings fail closed |
+| Security-report gate regressions | 21 tests passed; driver/extension SARIF references, missing/malformed reports and blocking findings fail closed |
+| Smoke credential regressions | 2 tests passed; fixture secrets stay out of generated files/argv and are redacted from diagnostics before truncation |
 | Validation helper Ruff / format | Passed for the report gate, production smoke helper and gate tests |
 | actionlint 1.7.12 | All four GitHub Actions workflows passed |
 | Terraform 1.17.2 `fmt` / provider init / validate | Both root modules passed; `init -backend=false -lockfile=readonly` used |
@@ -80,6 +81,18 @@ python scripts/production_smoke.py
 ```
 
 On Linux/macOS use `cp` for the example environment file. The README contains all lint/type/build, PostgreSQL test-database creation and optional browser-tool installation commands. `CLOUD_RUNBOOK.md` explains the production runtime contract; the example production environment deliberately cannot deploy as-is. Local execution used Docker Desktop with Linux containers on Windows, the backend virtual environment, and bundled Playwright/Brave for the optional browser check. No personal browser profile was opened.
+
+## Hosted execution and failure evidence
+
+[PR #5](https://github.com/ehoguts/ForgeBoard/pull/5) is the review surface. On its first revision, `0db486a`, hosted [CI](https://github.com/ehoguts/ForgeBoard/actions/runs/43378611186), [Security](https://github.com/ehoguts/ForgeBoard/actions/runs/43378611121) and [Infrastructure reference](https://github.com/ehoguts/ForgeBoard/actions/runs/43378611262) all passed. This includes all five image scans, both database test suites, eight mocked Terraform plans and the production HTTPS smoke on Ubuntu; Linux execution is verified in addition to the Windows host checks.
+
+The first [CodeQL run](https://github.com/ehoguts/ForgeBoard/actions/runs/43378611341) failed closed in the Python SARIF gate: `SARIF result references an unknown rule`. The real report stored its rule descriptors under `tool.extensions`, referenced by `result.rule.toolComponent`, while the original validator read only driver rules. The report also identified `py/clear-text-storage-sensitive-data` (security severity 7.5) in the smoke helper's generated temporary database connection file. This is actual failure evidence, not an intentionally weakened scanner or a skipped analysis.
+
+The corrected parser resolves descriptors within the selected driver/extension and validates ID, index and GUID aliases against the [SARIF 2.1.0 specification](https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/sarif-v2.1.0-os.html). It rejects contradictory, missing, ambiguous and out-of-range references. Running it against the original hosted report returns exit 1 and explicitly blocks the severity-7.5 finding; compatibility support does not lower the threshold.
+
+The helper now supplies disposable database credentials through child-process environments, keeps its placeholder `backend.env` empty, and redacts sensitive diagnostics before truncation. The negative-hostname subprocess has its own environment, then correct migrations use the original value. New regressions reproduced the previous file/argv exposure and pass after the fix; all 23 validation-tool tests passed. A fresh independent review found no concrete bypass/regression. The complete local production smoke passed again with the corrected helper, and inspection confirmed the generated fixture configuration contained no password/connection URL. Docker daemon operators remain trusted and can inspect container environment metadata. The production runtime's separately documented protected host environment-file contract is unchanged.
+
+The public repository's `main` protection was read back with 18 required GitHub Actions checks, strict up-to-date checks, administrator enforcement, linear history and conversation resolution. PRs are required with zero approving reviews for a single-maintainer portfolio; force pushes and branch deletion are disabled. Private vulnerability reporting is enabled. These settings were restored after the user explicitly requested public visibility again; private visibility had removed the earlier protection.
 
 ## Deliberate limits
 
