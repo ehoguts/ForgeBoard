@@ -1,0 +1,74 @@
+{
+	admin off
+	http_port 8080
+	https_port 8443
+	auto_https disable_redirects
+	servers {
+		timeouts {
+			read_header 5s
+			read_body 15s
+			idle 60s
+		}
+		max_header_size 16KB
+	}
+}
+
+(issuer-public) {
+	tls {
+		issuer acme {
+			email {$ACME_EMAIL}
+		}
+	}
+}
+
+(issuer-internal) {
+	# Local verification only; production Compose fixes TLS_MODE=public.
+	tls internal
+}
+
+:8080 {
+	handle /health/live {
+		respond "ok" 200
+	}
+	handle {
+		redir {$APP_ORIGIN}{uri} 308
+	}
+}
+
+https://{$APP_DOMAIN}:8443 {
+	import issuer-{$TLS_MODE:public}
+	root * /srv
+	encode zstd gzip
+	header {
+		-Server
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+	request_body {
+		max_size 64KB
+	}
+	handle /api/* {
+		reverse_proxy backend:8000 {
+			# No proxy addresses are trusted, and Uvicorn ignores forwarded headers.
+			header_up -Forwarded
+			header_up -X-Real-IP
+		}
+	}
+	handle /health/live {
+		respond "ok" 200
+	}
+	handle /health/* {
+		respond 404
+	}
+	@schema path /docs /docs/* /redoc /redoc/* /openapi.json
+	handle @schema {
+		respond 404
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

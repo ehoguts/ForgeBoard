@@ -5,17 +5,19 @@
 - React UI, dashboard, filtering, basic tests, Docker Compose, README.
 - Completion gate: working end-to-end local demo + tests and documented setup.
 
-## Phase 2 — software delivery and DevSecOps (CURRENT)
+## Phase 2 — software delivery and DevSecOps (COMPLETE)
 - GitHub Actions: backend/frontend tests, lint, type checks, container builds.
 - Security scanning: CodeQL, dependency analysis, and Trivy image scanning.
 - Document threat model and fix high-impact findings before continuing.
 - Completion gate: green pipeline on PR; documented intentionally triggered failure and remediation.
 
-## Phase 3 — cloud and Infrastructure as Code
-- Terraform/OpenTofu design for a modest, clearly priced cloud deployment.
-- Least-privilege IAM, secret management, managed database decision, HTTPS, and rollback.
-- Only provision paid resources after explicit user approval.
-- Completion gate: reproducible deployment and teardown with cost and security documented.
+## Phase 3 — cloud reference and Infrastructure as Code (CURRENT)
+- Budget constraint: **R$0**. AWS is an architectural reference, not a running deployment.
+- Terraform reference with private PostgreSQL, least-privilege IAM, encrypted remote-state design, and no secrets in state inputs.
+- Local production packaging with HTTPS/TLS tests, security scans, diagrams, cost estimates, and future deployment/rollback/teardown instructions.
+- Do not execute `terraform apply`, create cloud resources, deploy publicly, or activate paid services. No AWS account, credentials, or domain is required to evaluate this portfolio.
+- Completion gate: reproducible local Docker Compose application; offline Terraform formatting/validation and mocked plan tests; free CI/security checks; documented AWS architecture, theoretical costs, screenshots, and explicit limitations.
+- This replaces the original real deployment/teardown completion gate at the user's explicit zero-budget direction. A future deployment would be separate work with new authorization.
 
 ## Phase 4 — observability and reliability
 - Metrics, structured logs, tracing where useful, Grafana/Prometheus/OpenTelemetry.

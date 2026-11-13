@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 .venv/
 venv/
 __pycache__/
@@ -22,3 +23,12 @@ Thumbs.db
 .idea/
 .vscode/
 .local/
+.terraform/
+terraform.tfstate*
+*.tfplan
+plan*.json
+*.tfvars
+!*.tfvars.example
+*.tfvars.json
+backend.hcl
+*.tfstate*

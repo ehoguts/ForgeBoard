@@ -1,0 +1,37 @@
+{
+  "scope": "Local production images; AWS reference only, no deployment",
+  "scanner": "Trivy 0.76.2",
+  "images": [
+    {
+      "name": "backend-production",
+      "created_at": "2026-11-13T06:09:49.616553591Z",
+      "image_id": "sha256:b61c6a9d674b1bf1e1fcfc60520dcc483d1562c5c7078ec6b8b8bd58698b278f",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.4"
+      },
+      "severity_counts": {
+        "MEDIUM": 5,
+        "LOW": 1
+      },
+      "report_sha256": "5fcbaf0860820141f6d2450e447283d96a1c218632c61f67cb8be7bfd33f8b2b"
+    },
+    {
+      "name": "frontend-production",
+      "created_at": "2026-11-13T06:23:28.309457258Z",
+      "image_id": "sha256:2ba67544ef34cf1ce15787b7413302bb3c6efa9bf0babe60be90472e34456c10",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.4"
+      },
+      "severity_counts": {},
+      "report_sha256": "f9d6bfeb73e506e1f6b17a6df86e06c7c4616cb7c212e3ba4c9adb8568d86475"
+    }
+  ],
+  "source_sha256": {
+    "backend/Dockerfile.production": "88be7da608cd6ccbf1ebfa7225d55aaf6980ec2b9012a45e4eebcabcb4fa5098",
+    "frontend/Dockerfile.production": "54d14f17e816726680244cfb44053a3470a9549f9e2797f5b4960327cf884c1c",
+    "infra/runtime/caddy/go.mod": "511b849ad86980571406146e6d71c18bd5d377fd75c29bca79982432ac9078ed",
+    "infra/runtime/caddy/go.sum": "10369faf429690fdb7ef09bd5700fbffeb87fd6c63e704f92d493571047cc961"
+  }
+}

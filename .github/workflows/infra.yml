@@ -1,0 +1,83 @@
+name: Infrastructure reference
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infrastructure-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Terraform reference validation (no AWS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+      AWS_CONFIG_FILE: /dev/null
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the reviewed Terraform version and checksum
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          tool = json.loads(Path('infra/terraform/tool-versions.json').read_text())['terraform']
+          version, checksum = tool['version'], tool['linux_amd64_sha256']
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version)
+          assert re.fullmatch(r'[0-9a-f]{64}', checksum)
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f'TF_VERSION={version}\nTF_CHECKSUM={checksum}\n')
+          PY
+      - name: Install the verified local CLI without a cloud workspace
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" \
+            --output "${RUNNER_TEMP}/terraform.zip"
+          printf '%s  %s\n' "$TF_CHECKSUM" "${RUNNER_TEMP}/terraform.zip" | sha256sum --check --status
+          mkdir -p "${RUNNER_TEMP}/terraform-bin" "${RUNNER_TEMP}/terraform-plugins"
+          unzip -q "${RUNNER_TEMP}/terraform.zip" -d "${RUNNER_TEMP}/terraform-bin"
+          echo "${RUNNER_TEMP}/terraform-bin" >> "$GITHUB_PATH"
+          echo "TF_PLUGIN_CACHE_DIR=${RUNNER_TEMP}/terraform-plugins" >> "$GITHUB_ENV"
+      - name: Check formatting
+        run: terraform fmt -check -recursive infra/terraform
+      - name: Validate and test mocked plans only
+        run: |
+          for module in bootstrap app; do
+            terraform -chdir="infra/terraform/${module}" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="infra/terraform/${module}" validate -no-color
+            terraform -chdir="infra/terraform/${module}" test -no-color
+          done
+
+  production-runtime:
+    name: Local production HTTPS smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Build production images locally without publishing
+        run: |
+          docker build --pull -f backend/Dockerfile.production -t forgeboard-backend:production backend
+          docker build --pull -f frontend/Dockerfile.production -t forgeboard-frontend:production .
+          docker build --pull -t forgeboard-database:local infra/postgres
+      - name: Test trusted local HTTPS and PostgreSQL TLS without AWS
+        run: python scripts/production_smoke.py

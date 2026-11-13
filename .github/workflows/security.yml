@@ -130,7 +130,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [backend, frontend, database]
+        service: [backend, frontend, database, backend-production, frontend-production]
     env:
       TRIVY_IMAGE: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
       SCAN_TARGET: ${{ matrix.service }}
@@ -148,6 +148,12 @@ jobs:
           case "$SCAN_TARGET" in
             backend|frontend)
               docker build --pull --tag "forgeboard-${SCAN_TARGET}:security" "$SCAN_TARGET"
+              ;;
+            backend-production)
+              docker build --pull --file backend/Dockerfile.production --tag "forgeboard-${SCAN_TARGET}:security" backend
+              ;;
+            frontend-production)
+              docker build --pull --file frontend/Dockerfile.production --tag "forgeboard-${SCAN_TARGET}:security" .
               ;;
             database)
               docker build --pull --tag forgeboard-database:security infra/postgres

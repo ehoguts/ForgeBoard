@@ -1,0 +1,94 @@
+name: forgeboard-production
+
+x-backend: &backend
+  image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to the reviewed production image digest}
+  pull_policy: never
+  env_file:
+    - ${RUNTIME_ENV_FILE:-/run/forgeboard/backend.env}
+  environment:
+    APP_ENV: production
+    COOKIE_SECURE: "true"
+    ENABLE_API_DOCS: "false"
+    APP_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN to the DNS hostname}
+    SESSION_TTL_HOURS: "24"
+  volumes:
+    - type: bind
+      source: ${RDS_CA_BUNDLE:-/opt/forgeboard/shared/rds-global-bundle.pem}
+      target: /run/certs/rds-global-bundle.pem
+      read_only: true
+      bind:
+        create_host_path: false
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=32m
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 768m
+  cpus: "1.0"
+  pids_limit: 128
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "3"
+
+services:
+  # Apply migrations explicitly before starting a release; never downgrade automatically.
+  migrate:
+    <<: *backend
+    profiles: [ops]
+    command: [alembic, upgrade, head]
+    restart: "no"
+
+  backend:
+    <<: *backend
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 4
+    stop_grace_period: 30s
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to the reviewed production image digest}
+    pull_policy: never
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN to the DNS hostname}
+      APP_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN to the DNS hostname}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL to the certificate contact address}
+      TLS_MODE: public
+    ports:
+      - "${PRODUCTION_BIND_ADDRESS:-127.0.0.1}:80:8080"
+      - "${PRODUCTION_BIND_ADDRESS:-127.0.0.1}:443:8443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: "0.5"
+    pids_limit: 64
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 4
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:

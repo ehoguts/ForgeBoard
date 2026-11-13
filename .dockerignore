@@ -1,4 +1,12 @@
 .git
+.local/
+infra/terraform/**/.terraform/
+**/*.tfstate*
+**/*.tfplan
+**/plan*.json
+**/*.tfvars
+**/*.tfvars.json
+**/backend.hcl
 .env
 .env.*
 !.env.example
