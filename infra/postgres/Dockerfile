@@ -1,4 +1,4 @@
-FROM postgres:16.16-alpine@sha256:0adbf25a9e96d38823bb813f3ac0ed41fadb665c88f1df7fe6dbfb060cbdc106
+FROM postgres:18.0-alpine@sha256:48c8ad3a7284b82be4482a52076d47d879fd6fb084a1cbfccbd551f9331b0e40
 # Retain upstream initialization, using Alpine's small privilege-drop helper.
 # Removing the old Go-based gosu eliminates its bundled vulnerable Go runtime.
 RUN apk upgrade --no-cache && apk add --no-cache su-exec \
