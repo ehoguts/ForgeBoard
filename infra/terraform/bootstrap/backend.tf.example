@@ -1,0 +1,5 @@
+# After the bucket exists and the initial local state is securely backed up,
+# copy to backend.tf and explicitly migrate the bootstrap state with init -migrate-state.
+terraform {
+  backend "s3" {}
+}

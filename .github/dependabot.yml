@@ -35,7 +35,7 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: docker
-    directories: ["/backend", "/frontend"]
+    directories: ["/backend", "/frontend", "/infra/postgres"]
     schedule:
       interval: weekly
       day: monday
@@ -51,3 +51,17 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+
+  - package-ecosystem: terraform
+    directories: ["/infra/terraform/bootstrap", "/infra/terraform/app"]
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: gomod
+    directory: /infra/runtime/caddy
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3

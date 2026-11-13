@@ -2,8 +2,11 @@
 
 [![CI](https://github.com/ehoguts/ForgeBoard/actions/workflows/ci.yml/badge.svg)](https://github.com/ehoguts/ForgeBoard/actions/workflows/ci.yml)
 [![Security](https://github.com/ehoguts/ForgeBoard/actions/workflows/security.yml/badge.svg)](https://github.com/ehoguts/ForgeBoard/actions/workflows/security.yml)
+[![Infrastructure reference](https://github.com/ehoguts/ForgeBoard/actions/workflows/infra.yml/badge.svg)](https://github.com/ehoguts/ForgeBoard/actions/workflows/infra.yml)
 
-Phase 2 adds automated quality/build checks, CodeQL, dependency audits, and container vulnerability gates. Read the [delivery guide](docs/DELIVERY.md), [threat model](docs/THREAT_MODEL.md), [security policy](SECURITY.md), and [Phase 2 validation evidence](docs/PHASE2_VALIDATION.md). The application remains local; these workflows do not deploy or publish images.
+**A local Software Engineering, DevOps and AppSec portfolio with an R$0 cloud budget.** Start with the [portfolio walkthrough](docs/PORTFOLIO.md) for screenshots, architecture diagrams, source pointers and reproducible evidence. No cloud account, credentials or domain is needed to evaluate ForgeBoard.
+
+Phase 3 adds an AWS reference in Terraform, production container packaging, and a local HTTPS/PostgreSQL TLS smoke test. AWS resources are **not provisioned**; no public application deployment or paid service is part of this project. Read the [infrastructure runbook](docs/CLOUD_RUNBOOK.md), [theoretical costs](docs/CLOUD_COSTS.md), and [Phase 3 validation evidence](docs/PHASE3_VALIDATION.md). GitHub Actions checks source, dependencies, containers and mocked infrastructure plans without deploying or publishing images.
 
 ForgeBoard is a small issue tracker for personal software projects. Phase 1 includes account registration, login/logout, project and issue CRUD, issue search and filters, pagination, and an account-scoped dashboard.
 
@@ -12,6 +15,15 @@ The stack is FastAPI, Pydantic 2, SQLAlchemy 2, Alembic, PostgreSQL 16, React, T
 ![ForgeBoard dashboard on desktop](docs/screenshots/dashboard-desktop.png)
 
 Captured from the running Compose stack. See the [mobile dashboard](docs/screenshots/dashboard-mobile.png) and [project with issue filters](docs/screenshots/project-desktop.png).
+
+```mermaid
+flowchart LR
+    Browser -->|HTTP localhost:5173| UI[React / Vite]
+    UI -->|same-origin API proxy| API[FastAPI]
+    API -->|SQLAlchemy / psycopg| DB[(Local PostgreSQL 16)]
+```
+
+The diagram shows the working development stack. The separate [AWS reference diagram](docs/CLOUD_RUNBOOK.md#reference-architecture) describes future infrastructure, not running cloud services.
 
 ## Start the local stack
 
@@ -134,6 +146,8 @@ docker compose exec frontend npm run format:check
 
 API tests cover registration/login/logout, session expiry/revocation, validation, CSRF enforcement, project/issue CRUD, filtering/pagination, dashboard counts, and two-account isolation. Frontend tests cover representative authentication and issue forms, filtering, and async/error states. Test behavior and the validation results from this implementation session are recorded in [VALIDATION.md](docs/VALIDATION.md).
 
+The [delivery guide](docs/DELIVERY.md) documents CodeQL, dependency audits and image-scanning gates. See the [threat model](docs/THREAT_MODEL.md), [security policy](SECURITY.md) and [Phase 2 evidence](docs/PHASE2_VALIDATION.md) for the earlier delivery/security milestone.
+
 ### Optional browser smoke test
 
 With the Compose stack running, the checked-in browser test exercises registration, login, project/issue creation and editing, status changes, combined URL filters, dashboard counts, mobile width, two-account isolation, confirmed deletion, and logout. It creates disposable local accounts and captures screenshots in `docs/screenshots/`. Its sample project is deleted after the assertions. Run from the repository root with Node.js 24.22+ and npm:
@@ -159,6 +173,25 @@ These commands use the disposable credentials from `.env.example`. If you change
 
 The test harness requires the database name in `TEST_DATABASE_URL` to end in `_test`. It applies Alembic migrations and clears application tables in that database before each test. Always use a dedicated disposable test database: **never point the suite at the application database or any database containing data you want to retain**. The normal `forgeboard` application database is not touched by the commands above.
 
+## Phase 3: production packaging and infrastructure reference
+
+The regular Compose stack above remains the application demo. A separate runtime serves the built React files through Caddy, uses a non-root FastAPI image, and requires HTTPS, Secure cookies and a TLS-verified PostgreSQL connection. With Docker running and Python 3.12+ installed, run this disposable check from the repository root:
+
+```powershell
+docker build -f backend/Dockerfile.production -t forgeboard-backend:production backend
+docker build -f frontend/Dockerfile.production -t forgeboard-frontend:production .
+docker build -t forgeboard-database:local infra/postgres
+python scripts/production_smoke.py
+```
+
+The helper uses loopback ports 18080/18443, its own randomly named Docker project, an internal certificate authority and a disposable TLS-enabled PostgreSQL database. It explicitly runs Alembic, checks HTTPS/cookie/CSRF/account-isolation behavior and rejects a database certificate hostname mismatch. It cleans only its fixtures and does not change the development database or the operating system's certificate trust. Initial builds need internet access; the test does not contact AWS or a public certificate issuer.
+
+The Caddy runtime is built from a pinned source version with reviewed dependency updates instead of retaining vulnerable dependencies from the upstream binary. The [Phase 3 security notes](docs/PHASE3_SECURITY.md) record the findings, source pins and verification evidence.
+
+`compose.production.yaml` and `.env.production.example` document the runtime contract. The example contains unusable release/domain placeholders; it is not a ready-to-deploy environment. Use the smoke helper for the supported local verification path. Configuration and future migration/rollback/teardown considerations are in the [runbook](docs/CLOUD_RUNBOOK.md).
+
+For Terraform **1.17.2**, follow the checksum-verified [tool installation and account-free commands](infra/terraform/README.md). The permitted checks are `fmt`, `init -backend=false -lockfile=readonly`, `validate`, and `test` with mocked plan runs in `bootstrap/` and `app/`. Provider downloads need internet access; these checks do not use AWS credentials, initialize remote state or exercise AWS APIs. Do not run `terraform apply` or a real provider plan. The [validation record](docs/PHASE3_VALIDATION.md) distinguishes actual local/CI results from untested future deployment assumptions.
+
 ## Configuration
 
 | Variable | Purpose | Local example |
@@ -171,6 +204,8 @@ The test harness requires the database name in `TEST_DATABASE_URL` to end in `_t
 | `COOKIE_SECURE` | Send session cookie only over HTTPS; backend default is `true` | `false` for localhost HTTP |
 | `SESSION_TTL_HOURS` | Absolute server-side session lifetime | `24` |
 | `API_PROXY_TARGET` | Vite server's API target; set by Compose | `http://backend:8000` |
+| `APP_ENV` | Backend runtime policy; production requires HTTPS/Secure cookies/PostgreSQL TLS | `development` by default |
+| `ENABLE_API_DOCS` | Publish OpenAPI UI/schema; production Compose disables it | `true` in development |
 
 Registration creates an account; login creates a server-side session. Passwords use Argon2id. The opaque session cookie is `HttpOnly` and `SameSite=Lax`; only the token hash is stored in the database. The CSRF bootstrap endpoint is `GET /api/v1/auth/csrf`, and authenticated writes require `X-CSRF-Token`. The UI keeps CSRF values in memory and never places session tokens in browser storage. Every resource query is authorized on the backend.
 
@@ -197,12 +232,20 @@ docker compose down --volumes
 ```text
 backend/              FastAPI API, SQLAlchemy models, Alembic, pytest
 frontend/             React app, typed API client, component tests
-infra/                Local infrastructure guidance
-docs/                 Specification, architecture, roadmap, validation
+infra/postgres/       Patched local PostgreSQL image
+infra/runtime/        Production reverse proxy configuration
+infra/terraform/      AWS reference modules and mocked plan tests
+scripts/              Browser/TLS smoke tests and security report gates
+.github/workflows/    Quality, security, CodeQL and infrastructure checks
+docs/                 Portfolio, diagrams, costs, runbook and validation
 compose.yaml          PostgreSQL + API + frontend, local only
+compose.production.yaml  Production runtime contract; local smoke overrides
 .env.example          Disposable local configuration
+.env.production.example  Non-deployable runtime placeholders
 ```
 
 Phase 2 includes GitHub Actions checks/container builds, CodeQL, dependency/Trivy scanning, and a documented threat model. Application image bases and actions are pinned; Python transitive versions are constrained in `backend/constraints.txt`. The PostgreSQL image is built from `infra/postgres/` to patch system packages and replace the old Go-based privilege-drop helper with Alpine's `su-exec`.
 
-Phase 3 is cloud and Infrastructure as Code design. Provisioning paid resources or deploying publicly requires separate explicit authorization. Kubernetes and an observability stack are not part of Phase 2. The local MVP is not a production deployment.
+Phase 3 is an account-free AWS reference with local production-container validation. The user's R$0 constraint replaces the original real-cloud-deployment gate in the [roadmap](docs/ROADMAP.md); no apply, paid infrastructure or public deployment is needed for completion. The theoretical reference costs are incompatible with the current budget and are documentation only.
+
+The next milestone is Phase 4: observability and reliability. Metrics, tracing, an observability stack and a controlled incident exercise are not implemented in Phase 3. Any future work must preserve the zero-budget constraint unless the user changes it. Local production packaging and mock tests do not establish production readiness or cloud availability.

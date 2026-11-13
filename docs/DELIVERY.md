@@ -6,13 +6,14 @@ ForgeBoard's [public GitHub repository](https://github.com/ehoguts/ForgeBoard) u
 
 | Workflow | Required behavior |
 | --- | --- |
-| `ci.yml` | Backend lint/format/mypy; SQLite and PostgreSQL integration tests with Alembic; migration drift check; frontend lint/format/types/Vitest/build; backend/frontend Docker builds |
+| `ci.yml` | Backend lint/format/mypy; SQLite and PostgreSQL integration tests with Alembic; migration drift check; frontend lint/format/types/Vitest/build; development and production Docker builds |
 | `codeql.yml` | Python and JavaScript/TypeScript, security-extended queries, SARIF upload, explicit security-severity gate |
-| `security.yml` | Report-validator regression tests; Python and npm audits; Trivy scans of backend, frontend, and database images |
+| `security.yml` | Report-validator regression tests; Python and npm audits; Trivy scans of development backend/frontend, production backend/frontend, and database images |
+| `infra.yml` | Checksum-verified Terraform CLI, formatting/validation and eight mocked plan runs without AWS; production-container HTTPS/PostgreSQL TLS smoke using disposable local fixtures |
 
 PRs and pushes to `main`/`master` trigger checks. CodeQL and security scans also run weekly and support manual dispatch. Required jobs have timeouts; new commits cancel superseded runs. The demo input is a boolean, never interpolated into a shell command.
 
-Third-party actions use verified full commit SHAs. Base application images, PostgreSQL, and Trivy use digests. Dependabot proposes weekly updates for actions, Python, npm, Docker, and Compose; it does not automatically merge them. Update `backend/constraints.txt` with Python dependency changes and rerun installation, audits, tests, and image scans. Constraints currently describe resolved Linux/Python 3.12 versions and do not provide Python wheel hashes. System package security updates are intentionally refreshed at build time.
+Third-party actions use verified full commit SHAs. Base application images, PostgreSQL, and Trivy use digests. Dependabot proposes weekly updates for actions, Python, npm, Docker, Compose, Terraform providers and the production Caddy Go module; it does not automatically merge them. Update `backend/constraints.txt` with Python dependency changes and rerun installation, audits, tests, and image scans. Constraints currently describe resolved Linux/Python 3.12 versions and do not provide Python wheel hashes. System package security updates are intentionally refreshed at build time. [PHASE3_SECURITY.md](PHASE3_SECURITY.md) records why the production web server uses a locked source build.
 
 ## Blocking thresholds and failures
 
@@ -76,8 +77,8 @@ It does not install vulnerable software or alter application code. The regressio
 
 ## Repository settings and review
 
-Before merging, require the CI, CodeQL, and Security checks shown on the PR, including both container build jobs and all three image scans. Use GitHub **Settings → Branches/Rules → main** to require PRs and passing checks. Keep direct/force pushes and branch deletion restricted; do not give untrusted PR jobs secrets. Check names and actual enforced settings are recorded in the validation document, rather than inferred from the workflow files.
+Before merging, require the CI, CodeQL, Security and Infrastructure reference checks shown on the PR, including all four container builds and all five image scans. Use GitHub **Settings → Branches/Rules → main** to require PRs and passing checks. Keep direct/force pushes and branch deletion restricted; do not give untrusted PR jobs secrets. Check names and actual enforced settings are recorded in the validation document, rather than inferred from the workflow files.
 
-The public source repository is not a public application deployment. Phase 3 may design cloud infrastructure only after separate authorization for any costs and deployment actions.
+The public source repository is not a public application deployment. Phase 3 delivers reference IaC and local runtime checks under a R$0 budget. Its workflows have no AWS credentials, OIDC role, remote backend or provisioning/deployment steps. Any future real deployment is separate work; see [CLOUD_RUNBOOK.md](CLOUD_RUNBOOK.md).
 
 Sources: [GitHub workflow permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions), [CodeQL availability](https://docs.github.com/en/code-security/concepts/code-scanning/codeql/codeql-code-scanning), [Trivy image archives](https://trivy.dev/docs/latest/guide/target/container_image/), [pip-audit](https://github.com/pypa/pip-audit).

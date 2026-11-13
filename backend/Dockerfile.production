@@ -1,0 +1,14 @@
+FROM python:3.12-alpine@sha256:c5ba3deef00c7758561a0f03c26f44f10589263d40e732b8748e0d1f38f6dd89
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+    APP_ENV=production COOKIE_SECURE=true ENABLE_API_DOCS=false
+WORKDIR /app
+COPY requirements.txt constraints.txt ./
+RUN apk upgrade --no-cache && apk add --no-cache libstdc++ \
+    && pip install --no-cache-dir --only-binary=:all: -r requirements.txt \
+    && addgroup -S -g 10001 app && adduser -S -D -u 10001 -G app app
+COPY --chown=app:app app ./app
+COPY --chown=app:app alembic ./alembic
+COPY --chown=app:app alembic.ini ./alembic.ini
+USER 10001:10001
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--limit-concurrency", "8", "--timeout-keep-alive", "5", "--no-proxy-headers", "--no-access-log"]

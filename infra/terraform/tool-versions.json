@@ -1,0 +1,13 @@
+{
+  "terraform": {
+    "source": "https://releases.hashicorp.com/terraform/1.17.2/terraform_1.17.2_SHA256SUMS",
+    "version": "1.17.2",
+    "windows_amd64_sha256": "2244b7a379ea8c4b224a2eab411b7288f41ef36316fca27ae4b51b1cf2a53024",
+    "linux_amd64_sha256": "e6f16b2f0b137ee5729caa8c4e79a3bae4ee261acd198a1fcfa8584a6296605b"
+  },
+  "aws_provider": "6.73.0",
+  "docker_compose": {
+    "linux_x86_64_sha256": "af426722a8af5de812fcee30cc1c39f0639f5f723cbadefb25e5d4db054064cf",
+    "version": "5.7.1"
+  }
+}

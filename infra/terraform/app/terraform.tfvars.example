@@ -1,0 +1,11 @@
+aws_region              = "us-east-1"
+aws_account_id          = "000000000000"
+domain_name             = "forgeboard.example.com"
+ami_id                  = "ami-0123456789abcdef0" # Replace with a reviewed official AL2023 x86_64 image.
+postgres_engine_version = "16.16"                 # Confirm availability in RDS before the approved plan.
+
+# Defaults: t3.small, 16 GiB encrypted EC2 disk, private db.t4g.micro,
+# 20 GiB encrypted RDS gp3, Single-AZ, 7-day backups, deletion protection.
+# Reference values only. The current R$0 portfolio does not provision AWS.
+# A future separately authorized teardown must preserve a unique final snapshot
+# and explicitly review database_deletion_protection before making changes.
