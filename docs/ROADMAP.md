@@ -11,7 +11,7 @@
 - Document threat model and fix high-impact findings before continuing.
 - Completion gate: green pipeline on PR; documented intentionally triggered failure and remediation.
 
-## Phase 3 — cloud reference and Infrastructure as Code (CURRENT)
+## Phase 3 — cloud reference and Infrastructure as Code (COMPLETE)
 - Budget constraint: **R$0**. AWS is an architectural reference, not a running deployment.
 - Terraform reference with private PostgreSQL, least-privilege IAM, encrypted remote-state design, and no secrets in state inputs.
 - Local production packaging with HTTPS/TLS tests, security scans, diagrams, cost estimates, and future deployment/rollback/teardown instructions.
